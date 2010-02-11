@@ -1,0 +1,2 @@
+udfs -- User defined functions, contains set of parsers,mapper and reducers etc
+queries -- Set of Hive queries for different workflows 

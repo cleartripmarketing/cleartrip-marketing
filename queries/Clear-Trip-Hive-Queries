@@ -1,0 +1,123 @@
+#Create master tables
+CREATE TABLE itsrawlogs(ip STRING,id STRING,ts STRING,method STRING,url STRING,status STRING,restime STRING,reff STRING,user_agent STRING,cookieheader STRING,timetoprocess STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' LINES TERMINATED BY '\n';
+CREATE TABLE siterawlogs(line STRING);
+
+#From Local
+LOAD DATA LOCAL INPATH './access_log.2010.01.27.gz' INTO TABLE itsrawlogs;
+
+#From Local
+LOAD DATA LOCAL INPATH './20100128000000-172.16.1.71-access.log.gz' INTO TABLE siterawlogs;
+LOAD DATA LOCAL INPATH './20100128000000-172.16.1.65-access.log.gz' INTO TABLE siterawlogs;
+LOAD DATA LOCAL INPATH './20100128000000-172.16.1.61-access.log.gz' INTO TABLE siterawlogs;
+LOAD DATA LOCAL INPATH './20100128000000-172.16.1.51-access.log.gz' INTO TABLE siterawlogs;
+LOAD DATA LOCAL INPATH './20100128000000-172.16.1.45-access.log.gz' INTO TABLE siterawlogs;
+LOAD DATA LOCAL INPATH './20100128000000-172.16.1.41-access.log.gz' INTO TABLE siterawlogs;
+
+
+#Create cleaned its logs 
+CREATE TABLE itscleanlog(ts STRING,adserv_user STRING,apache_user STRING,publisher STRING,medium STRING,campaign STRING,content STRING);
+ADD FILE itslogparser_map.py;
+INSERT OVERWRITE TABLE itscleanlog SELECT TRANSFORM(*) USING 'itslogparser_map.py' AS ts,adserv_user,apache_user,publisher,media,campaign,content FROM itsrawlogs;
+
+#Generate Impressions Report
+CREATE TABLE impressionreport (publisher STRING,medium STRING,campaign STRING,content STRING,impressions STRING,uuids STRING);
+INSERT OVERWRITE TABLE impressionreport SELECT publisher,medium,campaign,content,COUNT(1) as impressions,COUNT(DISTINCT(adserv_user)) as uuids FROM itscleanlog GROUP BY publisher,medium,campaign,content;
+
+#Create cleaned site logs 
+CREATE TABLE sitecleanlog(ts STRING,apache_user STRING,adserv_user STRING,isClickURL STRING,publisher STRING,medium STRING,campaign STRING,content STRING);
+ADD FILE weblogparser_map.py;
+INSERT OVERWRITE TABLE sitecleanlog SELECT TRANSFORM(*) USING 'weblogparser_map.py' AS ts,apache_user,adserv_user,isClickURL,publisher,medium,campaign,content FROM siterawlogs;
+
+#Generate Click Report
+CREATE TABLE clickreport (publisher STRING,medium STRING,campaign STRING,content STRING,clicks STRING,uuids STRING);
+INSERT OVERWRITE TABLE clickreport SELECT publisher,medium,campaign,content,COUNT(1) as clicks,COUNT(DISTINCT(apache_user)) as uuids FROM sitecleanlog WHERE isClickUrl="True" GROUP BY publisher,medium,campaign,content;
+
+
+#Sample Output from Click Report 
+vizury	displaycpa	sector	HJR_DEL	1	1
+vizury	displaycpa	sector	HYD_AMD	1	1
+vizury	displaycpa	sector	HYD_BBI	4	2
+vizury	displaycpa	sector	HYD_BHO	1	1
+vizury	displaycpa	sector	HYD_BLR	5	4
+vizury	displaycpa	sector	HYD_BOM	6	5
+vizury	displaycpa	sector	HYD_CCU	4	4
+vizury	displaycpa	sector	HYD_CJB	1	1
+vizury	displaycpa	sector	HYD_COK	4	4
+vizury	displaycpa	sector	HYD_DEL	9	7
+vizury	displaycpa	sector	HYD_DXB	1	1
+vizury	displaycpa	sector	HYD_GAU	1	1
+vizury	displaycpa	sector	HYD_GOI	4	4
+vizury	displaycpa	sector	HYD_IDR	1	1
+vizury	displaycpa	sector	HYD_IMF	1	1
+vizury	displaycpa	sector	HYD_IXM	1	1
+vizury	displaycpa	sector	HYD_IXU	1	1
+vizury	displaycpa	sector	HYD_JAI	4	3
+vizury	displaycpa	sector	HYD_LKO	2	2
+vizury	displaycpa	sector	HYD_MAA	5	4
+vizury	displaycpa	sector	HYD_NYC	1	1
+vizury	displaycpa	sector	HYD_PNQ	1	1
+vizury	displaycpa	sector	HYD_RJA	1	1
+vizury	displaycpa	sector	HYD_VTZ	2	2
+vizury	displaycpa	sector	IDR_BOM	5	4
+vizury	displaycpa	sector	IDR_DEL	3	2
+vizury	displaycpa	sector	IDR_HYD	1	1
+vizury	displaycpa	sector	IDR_IXJ	1	1
+vizury	displaycpa	sector	IXA_CCU	1	1
+vizury	displaycpa	sector	IXA_DEL	1	1
+vizury	displaycpa	sector	IXB_BOM	1	1
+vizury	displaycpa	sector	IXB_DEL	2	2
+vizury	displaycpa	sector	IXC_BHO	2	1
+vizury	displaycpa	sector	IXC_BOM	3	3
+vizury	displaycpa	sector	IXC_DEL	1	1
+vizury	displaycpa	sector	IXC_GOI	1	1
+vizury	displaycpa	sector	IXE_BLR	1	1
+vizury	displaycpa	sector	IXE_BOM	1	1
+vizury	displaycpa	sector	IXE_DEL	1	1
+vizury	displaycpa	sector	IXJ_BOM	1	1
+vizury	displaycpa	sector	IXJ_DEL	1	1
+vizury	displaycpa	sector	IXJ_IDR	2	1
+
+
+#Sample Output from Impressions Report 
+admagnet	displaycpc	sector201001	120x600_orange_swf	21097	8284
+admagnet	displaycpc	sector201001	120x600_white_swf	19945	9167
+admagnet	displaycpc	sector201001	160x600_orange_swf	9728	5764
+admagnet	displaycpc	sector201001	160x600_white_swf	10603	5929
+admagnet	displaycpc	sector201001	250x250_orange_swf	1660	834
+admagnet	displaycpc	sector201001	250x250_white_swf	41669	17792
+admagnet	displaycpc	sector201001	300x250_orange_swf	35156	16148
+admagnet	displaycpc	sector201001	720x300_orange_swf	13067	10515
+admagnet	displaycpc	sector201001	720x300_white_swf	11418	8661
+admagnet	displaycpc	sector201001	728x90_orange_swf	68812	24190
+admagnet	displaycpc	sector201001	728x90_white_swf	84482	27019
+mc	displaycpm	advancepurchase201001	180x150_expando_white	6	3
+mc	displaycpm	graph201001	758x195_matrix_orange	43	10
+mc	displaycpm	graph201001	758x195_matrix_white	81	13
+mc	displaycpm	graph201001	773x30_matrix_strip_orange	76	13
+mc	displaycpm	graph201001	773x30_matrix_strip_white	86	13
+mc	displaycpm	graph20100127	758x195_matrix_orange	63258	56303
+mc	displaycpm	graph20100127	758x195_matrix_white	63545	56491
+mc	displaycpm	graph20100127	773x30_matrix_strip_orange	398016	107789
+mc	displaycpm	graph20100127	773x30_matrix_strip_white	398758	107635
+mc	displaycpm	graph20100127??id=jCustomerWAPProv	758x195_matrix_white	1	1
+mc	displaycpm	offer20100125	180x150_expando_orange	4	1
+mc	displaycpm	offer20100125	180x150_expando_white	9	5
+yahoo	displaycpc	sector201001	160x600_orange_gif	2054	1386
+yahoo	displaycpc	sector201001	160x600_orange_swf	90246	61759
+yahoo	displaycpc	sector201001	160x600_white_gif	21508	4545
+yahoo	displaycpc	sector201001	160x600_white_swf	375112	95705
+yahoo	displaycpc	sector201001	180x150_orange_gif	21382	4637
+yahoo	displaycpc	sector201001	180x150_orange_swf	11564	6828
+yahoo	displaycpc	sector201001	180x150_white_gif	11670	3703
+yahoo	displaycpc	sector201001	180x150_white_swf	55011	18509
+yahoo	displaycpc	sector201001	300x250_orange_gif	1863	1215
+yahoo	displaycpc	sector201001	300x250_orange_swf	20217	13115
+yahoo	displaycpc	sector201001	300x250_white_gif	1589	1246
+yahoo	displaycpc	sector201001	300x250_white_swf	52041	38823
+yahoo	displaycpc	sector201001	728x90_orange_gif	9183	4098
+yahoo	displaycpc	sector201001	728x90_orange_swf	116629	51160
+yahoo	displaycpc	sector201001	728x90_white_gif	50419	10940
+yahoo	displaycpc	sector201001	728x90_white_swf	704748	199410
+yahoo	displaycpm	sector201001	728x400_orange	32780	26963
+yahoo	displaycpm	sector201001	728x400_white	32770	27081
+

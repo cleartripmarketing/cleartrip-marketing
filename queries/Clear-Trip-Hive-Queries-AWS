@@ -1,0 +1,30 @@
+#Import logs from s3 to HDFS
+hadoop distcp s3n://samplejob/itslogs itslogs
+hadoop distcp s3n://samplejob/sitelogs sitelogs 
+
+#Create and load its tables 
+CREATE TABLE itsrawlogs(ip STRING,id STRING,ts STRING,method STRING,url STRING,status STRING,restime STRING,reff STRING,user_agent STRING,cookieheader STRING,timetoprocess STRING) ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' LINES TERMINATED BY '\n';
+CREATE TABLE siterawlogs(line STRING);
+
+#From Elastic MR
+LOAD DATA INPATH 'itslogs' INTO TABLE itsrawlogs;
+LOAD DATA INPATH 'sitelogs' INTO TABLE siterawlogs; 
+
+
+#Create cleaned its logs 
+CREATE TABLE itscleanlog(ts STRING,adserv_user STRING,apache_user STRING,publisher STRING,medium STRING,campaign STRING,content STRING);
+ADD FILE itslogparser_map.py;
+INSERT OVERWRITE TABLE itscleanlog SELECT TRANSFORM(*) USING 'itslogparser_map.py' AS ts,adserv_user,apache_user,publisher,media,campaign,content FROM itsrawlogs;
+
+#Create cleaned site logs 
+CREATE TABLE sitecleanlog(ts STRING,apache_user STRING,adserv_user STRING,isClickURL STRING,publisher STRING,medium STRING,campaign STRING,content STRING);
+ADD FILE weblogparser_map.py;
+INSERT OVERWRITE TABLE sitecleanlog SELECT TRANSFORM(*) USING 'weblogparser_map.py' AS ts,apache_user,adserv_user,isClickURL,publisher,medium,campaign,content FROM siterawlogs;
+
+#Generate Impressions Report
+CREATE TABLE impressionreport (publisher STRING,medium STRING,campaign STRING,content STRING,impressions STRING,uuids STRING);
+INSERT OVERWRITE TABLE impressionreport SELECT publisher,medium,campaign,content,COUNT(1) as impressions,COUNT(DISTINCT(adserv_user)) as uuids FROM itscleanlog GROUP BY publisher,medium,campaign,content;
+
+#Generate Click Report
+CREATE TABLE clickreport (publisher STRING,medium STRING,campaign STRING,content STRING,clicks STRING,uuids STRING);
+INSERT OVERWRITE TABLE clickreport SELECT publisher,medium,campaign,content,COUNT(1) as clicks,COUNT(DISTINCT(apache_user)) as uuids FROM sitecleanlog WHERE isClickUrl="True" GROUP BY publisher,medium,campaign,content;
